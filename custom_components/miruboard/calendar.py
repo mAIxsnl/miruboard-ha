@@ -156,13 +156,21 @@ class MiruboardCalendar(CalendarEntity):
             "source_name": self._source_name,
         }
 
+    @staticmethod
+    def _as_datetime(val) -> datetime:
+        """Convert date or datetime to tz-aware datetime for comparison."""
+        if isinstance(val, datetime):
+            return val if val.tzinfo else val.replace(tzinfo=dt_util.UTC)
+        # date object (all-day event)
+        return datetime.combine(val, datetime.min.time(), tzinfo=dt_util.UTC)
+
     @property
     def event(self) -> CalendarEvent | None:
         """Return the next upcoming event."""
         now = dt_util.now()
-        upcoming = [e for e in self._events if e.end > now]
+        upcoming = [e for e in self._events if self._as_datetime(e.end) > now]
         if upcoming:
-            upcoming.sort(key=lambda e: e.start)
+            upcoming.sort(key=lambda e: self._as_datetime(e.start))
             return upcoming[0]
         return None
 
@@ -177,7 +185,8 @@ class MiruboardCalendar(CalendarEntity):
         return [
             e
             for e in self._events
-            if e.start < end_date and e.end > start_date
+            if self._as_datetime(e.start) < end_date
+            and self._as_datetime(e.end) > start_date
         ]
 
     async def async_update(self) -> None:
