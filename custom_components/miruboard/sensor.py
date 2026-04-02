@@ -81,7 +81,7 @@ class MiruboardCryptoSensor(CoordinatorEntity, SensorEntity):
     """Sensor for a cryptocurrency price."""
 
     _attr_has_entity_name = True
-    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_state_class = SensorStateClass.TOTAL
 
     def __init__(
         self,

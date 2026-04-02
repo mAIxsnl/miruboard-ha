@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 import aiohttp
@@ -36,12 +36,73 @@ async def async_setup_entry(
 
     entities = []
     for source in sources:
-        # Support both old format (plain URL string) and new format (dict with name/url/color)
         if isinstance(source, str):
             source = {"name": "Agenda", "url": source, "color": "#3b82f6"}
         entities.append(MiruboardCalendar(hass, entry, source))
 
     async_add_entities(entities)
+
+
+def _parse_ics_events(
+    ics_text: str, range_start: datetime, range_end: datetime
+) -> list[dict[str, Any]]:
+    """Parse ICS text into event dicts — tolerant of malformed feeds."""
+    from icalendar import Calendar
+
+    cal = Calendar.from_ical(ics_text)
+    events = []
+
+    for component in cal.walk():
+        if component.name != "VEVENT":
+            continue
+
+        try:
+            dt_start = component.get("DTSTART")
+            dt_end = component.get("DTEND")
+            if dt_start is None:
+                continue
+
+            start = dt_start.dt
+            end = dt_end.dt if dt_end else start
+
+            # Normalize to datetime for comparison
+            start_dt = start if isinstance(start, datetime) else datetime.combine(start, datetime.min.time())
+            end_dt = end if isinstance(end, datetime) else datetime.combine(end, datetime.min.time())
+
+            # Make timezone-aware if naive
+            if start_dt.tzinfo is None:
+                start_dt = dt_util.as_local(start_dt)
+            if end_dt.tzinfo is None:
+                end_dt = dt_util.as_local(end_dt)
+
+            # Filter by range
+            if start_dt > range_end or end_dt < range_start:
+                continue
+
+            summary = str(component.get("SUMMARY", "Event"))
+            location = str(component.get("LOCATION", "")) or None
+
+            # For all-day events, use date objects (HA calendar expects this)
+            if isinstance(start, date) and not isinstance(start, datetime):
+                events.append({
+                    "start": start,
+                    "end": end,
+                    "summary": summary,
+                    "location": location,
+                })
+            else:
+                events.append({
+                    "start": start_dt,
+                    "end": end_dt,
+                    "summary": summary,
+                    "location": location,
+                })
+        except Exception:
+            # Skip individual malformed events, don't crash the whole calendar
+            continue
+
+    events.sort(key=lambda e: e["start"] if isinstance(e["start"], datetime) else datetime.combine(e["start"], datetime.min.time()))
+    return events
 
 
 class MiruboardCalendar(CalendarEntity):
@@ -63,7 +124,7 @@ class MiruboardCalendar(CalendarEntity):
         self._events: list[CalendarEvent] = []
 
         safe_name = self._source_name.lower().replace(" ", "_")
-        self._attr_unique_id = f"{entry.entry_id}_calendar_{safe_name}"
+        self._attr_unique_id = f"{entry.entry_id}_cal_{safe_name}"
         self._attr_name = self._source_name
         self._attr_icon = "mdi:calendar"
 
@@ -112,9 +173,7 @@ class MiruboardCalendar(CalendarEntity):
         await self._fetch_events()
 
     async def _fetch_events(self) -> None:
-        """Fetch and parse ICS calendar."""
-        from ical.calendar_stream import IcsCalendarStream
-
+        """Fetch and parse ICS calendar using icalendar (tolerant parser)."""
         now = dt_util.now()
         range_end = now + timedelta(days=30)
 
@@ -122,7 +181,7 @@ class MiruboardCalendar(CalendarEntity):
             async with aiohttp.ClientSession() as session:
                 async with session.get(
                     self._source_url,
-                    timeout=aiohttp.ClientTimeout(total=10),
+                    timeout=aiohttp.ClientTimeout(total=15),
                     headers={"User-Agent": "Miruboard-HA/1.0"},
                 ) as resp:
                     if resp.status != 200:
@@ -138,35 +197,18 @@ class MiruboardCalendar(CalendarEntity):
             return
 
         try:
-            calendar = await self.hass.async_add_executor_job(
-                IcsCalendarStream.calendar_from_ics, ics_text
+            raw_events = await self.hass.async_add_executor_job(
+                _parse_ics_events, ics_text, now, range_end
             )
 
-            events: list[CalendarEvent] = []
-            for event in calendar.timeline.included(now, range_end):
-                summary = str(event.summary) if event.summary else "Event"
-                location = str(event.location) if event.location else None
-
-                start = event.dtstart
-                end = event.dtend if event.dtend else event.dtstart
-
-                if not isinstance(start, datetime):
-                    start = datetime.combine(start, datetime.min.time())
-                    start = dt_util.as_local(start)
-                if not isinstance(end, datetime):
-                    end = datetime.combine(end, datetime.min.time())
-                    end = dt_util.as_local(end)
-
-                events.append(
-                    CalendarEvent(
-                        start=start,
-                        end=end,
-                        summary=summary,
-                        location=location,
-                    )
+            self._events = [
+                CalendarEvent(
+                    start=ev["start"],
+                    end=ev["end"],
+                    summary=ev["summary"],
+                    location=ev["location"],
                 )
-
-            events.sort(key=lambda e: e.start)
-            self._events = events
+                for ev in raw_events
+            ]
         except Exception:
             _LOGGER.exception("Failed to parse calendar from %s", self._source_name)
