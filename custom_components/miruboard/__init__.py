@@ -5,13 +5,11 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from homeassistant.components.frontend import async_register_built_in_panel
-from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 
-from .const import DOMAIN, PLATFORMS
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -23,36 +21,14 @@ type MiruboardConfigEntry = ConfigEntry
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up the Miruboard component."""
-    # Register static path for the Lovelace card JS
-    await hass.http.async_register_static_paths(
-        [StaticPathConfig(CARD_URL, str(CARD_JS), cache_headers=True)]
-    )
-
-    # Register as a Lovelace resource
-    await _register_card_resource(hass)
+    # Register static path so the Lovelace card JS is served by HA
+    try:
+        hass.http.register_static_path(CARD_URL, str(CARD_JS), cache_headers=True)
+        _LOGGER.info("Registered Miruboard card at %s", CARD_URL)
+    except Exception:
+        _LOGGER.debug("Could not register static path for card JS")
 
     return True
-
-
-async def _register_card_resource(hass: HomeAssistant) -> None:
-    """Register the Miruboard card as a Lovelace resource if not already present."""
-    # Use the lovelace resources collection
-    try:
-        resources = hass.data.get("lovelace", {}).get("resources")
-        if resources is not None:
-            # Check if already registered
-            for item in resources.async_items():
-                if "miruboard" in item.get("url", ""):
-                    return
-            # Add new resource
-            await resources.async_create_item(
-                {"res_type": "module", "url": CARD_URL}
-            )
-            _LOGGER.info("Registered Miruboard card as Lovelace resource: %s", CARD_URL)
-        else:
-            _LOGGER.debug("Lovelace resources not available, card must be added manually")
-    except Exception:
-        _LOGGER.debug("Could not auto-register Lovelace resource, add manually: %s", CARD_URL)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: MiruboardConfigEntry) -> bool:
@@ -70,11 +46,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: MiruboardConfigEntry) ->
     if entry.data.get("calendar_enabled"):
         platforms.append(Platform.CALENDAR)
 
-    # Always set up sensor (crypto is default on)
     if Platform.SENSOR not in platforms:
         platforms.append(Platform.SENSOR)
 
-    # Deduplicate
     platforms = list(set(platforms))
 
     await hass.config_entries.async_forward_entry_setups(entry, platforms)
