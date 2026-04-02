@@ -43,6 +43,13 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
+def _make_aware(dt_val: datetime) -> datetime:
+    """Ensure a datetime is timezone-aware (default to UTC)."""
+    if dt_val.tzinfo is None:
+        return dt_val.replace(tzinfo=dt_util.UTC)
+    return dt_val
+
+
 def _parse_ics_events(
     ics_text: str, range_start: datetime, range_end: datetime
 ) -> list[dict[str, Any]]:
@@ -51,6 +58,10 @@ def _parse_ics_events(
 
     cal = Calendar.from_ical(ics_text)
     events = []
+
+    # Ensure range bounds are timezone-aware
+    range_start = _make_aware(range_start)
+    range_end = _make_aware(range_end)
 
     for component in cal.walk():
         if component.name != "VEVENT":
@@ -65,43 +76,44 @@ def _parse_ics_events(
             start = dt_start.dt
             end = dt_end.dt if dt_end else start
 
-            # Normalize to datetime for comparison
-            start_dt = start if isinstance(start, datetime) else datetime.combine(start, datetime.min.time())
-            end_dt = end if isinstance(end, datetime) else datetime.combine(end, datetime.min.time())
+            is_all_day = isinstance(start, date) and not isinstance(start, datetime)
 
-            # Make timezone-aware if naive
-            if start_dt.tzinfo is None:
-                start_dt = dt_util.as_local(start_dt)
-            if end_dt.tzinfo is None:
-                end_dt = dt_util.as_local(end_dt)
+            # Normalize to aware datetime for range comparison
+            if is_all_day:
+                start_cmp = _make_aware(datetime.combine(start, datetime.min.time()))
+                end_cmp = _make_aware(datetime.combine(
+                    end if isinstance(end, date) and not isinstance(end, datetime) else start,
+                    datetime.min.time(),
+                ))
+            else:
+                start_cmp = _make_aware(start)
+                end_cmp = _make_aware(end if isinstance(end, datetime) else start)
 
             # Filter by range
-            if start_dt > range_end or end_dt < range_start:
+            if start_cmp > range_end or end_cmp < range_start:
                 continue
 
             summary = str(component.get("SUMMARY", "Event"))
             location = str(component.get("LOCATION", "")) or None
 
-            # For all-day events, use date objects (HA calendar expects this)
-            if isinstance(start, date) and not isinstance(start, datetime):
+            if is_all_day:
                 events.append({
                     "start": start,
-                    "end": end,
+                    "end": end if isinstance(end, date) and not isinstance(end, datetime) else start + timedelta(days=1),
                     "summary": summary,
                     "location": location,
                 })
             else:
                 events.append({
-                    "start": start_dt,
-                    "end": end_dt,
+                    "start": _make_aware(start),
+                    "end": _make_aware(end if isinstance(end, datetime) else start),
                     "summary": summary,
                     "location": location,
                 })
         except Exception:
-            # Skip individual malformed events, don't crash the whole calendar
             continue
 
-    events.sort(key=lambda e: e["start"] if isinstance(e["start"], datetime) else datetime.combine(e["start"], datetime.min.time()))
+    events.sort(key=lambda e: _make_aware(e["start"]) if isinstance(e["start"], datetime) else _make_aware(datetime.combine(e["start"], datetime.min.time())))
     return events
 
 
