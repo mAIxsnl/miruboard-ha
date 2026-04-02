@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
+from homeassistant.components.frontend import async_register_built_in_panel
+from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
@@ -12,7 +15,44 @@ from .const import DOMAIN, PLATFORMS
 
 _LOGGER = logging.getLogger(__name__)
 
+CARD_JS = Path(__file__).parent / "miruboard-card.js"
+CARD_URL = "/miruboard/miruboard-card.js"
+
 type MiruboardConfigEntry = ConfigEntry
+
+
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    """Set up the Miruboard component."""
+    # Register static path for the Lovelace card JS
+    await hass.http.async_register_static_paths(
+        [StaticPathConfig(CARD_URL, str(CARD_JS), cache_headers=True)]
+    )
+
+    # Register as a Lovelace resource
+    await _register_card_resource(hass)
+
+    return True
+
+
+async def _register_card_resource(hass: HomeAssistant) -> None:
+    """Register the Miruboard card as a Lovelace resource if not already present."""
+    # Use the lovelace resources collection
+    try:
+        resources = hass.data.get("lovelace", {}).get("resources")
+        if resources is not None:
+            # Check if already registered
+            for item in resources.async_items():
+                if "miruboard" in item.get("url", ""):
+                    return
+            # Add new resource
+            await resources.async_create_item(
+                {"res_type": "module", "url": CARD_URL}
+            )
+            _LOGGER.info("Registered Miruboard card as Lovelace resource: %s", CARD_URL)
+        else:
+            _LOGGER.debug("Lovelace resources not available, card must be added manually")
+    except Exception:
+        _LOGGER.debug("Could not auto-register Lovelace resource, add manually: %s", CARD_URL)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: MiruboardConfigEntry) -> bool:
