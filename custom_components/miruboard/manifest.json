@@ -1,0 +1,12 @@
+{
+  "domain": "miruboard",
+  "name": "Miruboard",
+  "codeowners": ["@mikederuiter"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/mAIxsnl/miruboard-ha",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/mAIxsnl/miruboard-ha/issues",
+  "requirements": ["aiohttp>=3.9.0", "ical>=8.0.0", "feedparser>=6.0.0"],
+  "version": "1.0.0"
+}

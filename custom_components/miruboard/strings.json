@@ -1,0 +1,38 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Miruboard",
+        "description": "Enter your Miruboard Supabase credentials to automatically import all widget configurations.",
+        "data": {
+          "supabase_url": "Supabase URL",
+          "supabase_key": "Supabase Anon Key"
+        }
+      },
+      "confirm": {
+        "title": "Miruboard Import",
+        "description": "Found the following widgets:\n\n{summary}\n\nConfirm to create all sensors and entities."
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not connect to Supabase. Check URL and key.",
+      "no_widgets": "No widgets found in Supabase. Is the Miruboard database configured?",
+      "unknown": "Unexpected error during import."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Miruboard Options",
+        "description": "Toggle 'Re-sync from Miruboard' to refresh all settings from Supabase, or edit manually below.",
+        "data": {
+          "resync": "Re-sync from Miruboard",
+          "crypto_coins": "Crypto coins (comma-separated CoinGecko IDs)",
+          "travel_routes": "Travel routes (JSON)",
+          "rss_feeds": "RSS feed URLs (comma-separated)",
+          "calendar_sources": "Calendar ICS URLs (comma-separated)"
+        }
+      }
+    }
+  }
+}
