@@ -117,7 +117,13 @@ def _extract_config_from_widgets(
             data["calendar_enabled"] = True
             sources = ws.get("sources", [])
             data[CONF_CALENDAR_SOURCES] = [
-                s["url"] for s in sources if s.get("enabled", True) and s.get("url")
+                {
+                    "name": s.get("name", "Agenda"),
+                    "url": s["url"],
+                    "color": s.get("color", "#3b82f6"),
+                }
+                for s in sources
+                if s.get("enabled", True) and s.get("url")
             ]
 
     # Extract API keys from settings
