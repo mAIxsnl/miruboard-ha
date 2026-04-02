@@ -83,13 +83,19 @@ class MiruboardCryptoCard extends LitElement {
         width: 32px;
         height: 32px;
         border-radius: 50%;
-        background: var(--primary-color);
+        overflow: hidden;
         display: flex;
         align-items: center;
         justify-content: center;
+        background: var(--primary-color);
         color: white;
         font-weight: 700;
         font-size: 12px;
+      }
+      .coin-icon img {
+        width: 32px;
+        height: 32px;
+        object-fit: cover;
       }
       .coin-name {
         font-weight: 600;
@@ -119,6 +125,19 @@ class MiruboardCryptoCard extends LitElement {
     `;
   }
 
+  _coinIcon(coinId) {
+    return `https://cdn.jsdelivr.net/gh/AminMehrafarin/Cryptocurrency-Icons/svg/color/${coinId}.svg`;
+  }
+
+  _coinName(friendlyName, coinId) {
+    // Strip all "Miruboard" prefixes from friendly name
+    const clean = (friendlyName || coinId || "")
+      .replace(/Miruboard\s*/gi, "")
+      .trim();
+    // Capitalize first letter of each word
+    return clean.charAt(0).toUpperCase() + clean.slice(1);
+  }
+
   render() {
     if (!this.hass || !this._config) return html``;
 
@@ -138,10 +157,11 @@ class MiruboardCryptoCard extends LitElement {
             const price = parseFloat(state.state) || 0;
             const change = state.attributes.change_24h || 0;
             const coinId = state.attributes.coin_id || "";
-            const symbol = coinId.substring(0, 3).toUpperCase();
             const isPositive = change >= 0;
+            const name = this._coinName(state.attributes.friendly_name, coinId);
+            const symbol = coinId.substring(0, 3).toUpperCase();
+            const iconUrl = this._coinIcon(coinId);
 
-            // Format price
             const formattedPrice =
               price >= 1
                 ? price.toLocaleString("nl-NL", {
@@ -154,10 +174,18 @@ class MiruboardCryptoCard extends LitElement {
             return html`
               <div class="coin">
                 <div class="coin-left">
-                  <div class="coin-icon">${symbol}</div>
-                  <div class="coin-name">
-                    ${state.attributes.friendly_name?.replace("Miruboard ", "") || coinId}
+                  <div class="coin-icon">
+                    <img
+                      src="${iconUrl}"
+                      alt="${symbol}"
+                      loading="lazy"
+                      @error="${(e) => {
+                        e.target.style.display = "none";
+                        e.target.parentElement.textContent = symbol;
+                      }}"
+                    />
                   </div>
+                  <div class="coin-name">${name}</div>
                 </div>
                 <div class="coin-right">
                   <div class="coin-price">${formattedPrice}</div>
@@ -308,8 +336,7 @@ class MiruboardTravelCard extends LitElement {
             const traffic = state.attributes.traffic || "unknown";
             const dest = state.attributes.destination || "";
             const name =
-              state.attributes.friendly_name?.replace("Miruboard ", "") ||
-              entityId;
+              (state.attributes.friendly_name || entityId).replace(/Miruboard\s*/gi, "").trim();
 
             return html`
               <div class="route">
@@ -698,7 +725,7 @@ class MiruboardDashboardCard extends LitElement {
         const price = parseFloat(state.state) || 0;
         const change = state.attributes.change_24h || 0;
         const name =
-          state.attributes.friendly_name?.replace("Miruboard ", "") || entityId;
+          (state.attributes.friendly_name || entityId).replace(/Miruboard\s*/gi, "").trim();
         const isPos = change >= 0;
         const formatted =
           price >= 1
@@ -736,7 +763,7 @@ class MiruboardDashboardCard extends LitElement {
         const duration = parseInt(state.state) || 0;
         const traffic = state.attributes.traffic || "unknown";
         const name =
-          state.attributes.friendly_name?.replace("Miruboard ", "") || entityId;
+          (state.attributes.friendly_name || entityId).replace(/Miruboard\s*/gi, "").trim();
         const dotColor = traffic === "green" ? "#22c55e" : "#ef4444";
         return html`
           <div
